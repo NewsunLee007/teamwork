@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>课堂小组合作管理 v8.5</title>
+<!-- 核心库 -->
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+<!-- 字体库 -->
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=Noto+Serif+SC:wght@500;700;900&family=Dancing+Script:wght@700&display=swap" rel="stylesheet">
+
+<style>
+    /* --- 系统风格定义 --- */
+    :root { 
+        --primary: #5b5bd6; 
+        --primary-light: #eef2ff;
+        --bg-sidebar: #ffffff; 
+        --bg-main: #f8fafc; 
+        --text-main: #1e293b; 
+    }
+    body { font-family: 'Inter', sans-serif; background-color: var(--bg-main); color: var(--text-main); height: 100vh; overflow: hidden; }
+    
+    /* 布局 */
+    .app-container { display: flex; height: 100%; width: 100%; }
+    .sidebar { width: 260px; flex-shrink: 0; background: var(--bg-sidebar); border-right: 1px solid #e2e8f0; display: flex; flex-direction: column; z-index: 50; box-shadow: 4px 0 24px rgba(0,0,0,0.02); }
+    .nav-item { padding: 12px 20px; margin: 4px 12px; border-radius: 8px; cursor: pointer; color: #64748b; font-weight: 500; display: flex; align-items: center; gap: 12px; transition: all 0.2s; }
+    .nav-item:hover { background: #f1f5f9; color: var(--primary); }
+    .nav-item.active { background: var(--primary-light); color: var(--primary); font-weight: 700; border-left: 4px solid var(--primary); }
+    .main-content { flex: 1; overflow-y: auto; padding: 24px; position: relative; height: 100%; box-sizing: border-box;}
+    
+    /* 视图控制 */
+    .view-section { display: none; height: 100%; animation: fadeIn 0.3s ease-out; }
+    .view-section.active { display: flex; flex-direction: column; }
+    
+    /* 卡片组件 */
+    .card { background: white; border-radius: 16px; padding: 24px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); border: 1px solid #e2e8f0; }
+    .card-flush { padding: 0; overflow: hidden; }
+    
+    /* 按钮组件 */
+    .btn { padding: 8px 16px; border-radius: 8px; font-weight: 600; transition: all 0.2s; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px; font-size: 13px; }
+    .btn-primary { background: var(--primary); color: white; border: 1px solid transparent; box-shadow: 0 4px 6px rgba(91, 91, 214, 0.25); } .btn-primary:hover { background: #4b4bc3; transform: translateY(-1px); }
+    .btn-outline { border: 1px solid #cbd5e1; color: #475569; background: white; } .btn-outline:hover { background: #f8fafc; border-color: #94a3b8; }
+    
+    /* --- Logo与标题 --- */
+    .app-header { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; padding-bottom: 20px; border-bottom: 1px solid #f1f5f9; }
+    .school-logo { width: 56px; height: 56px; object-fit: contain; }
+    .app-title { display: flex; flex-direction: column; justify-content: center; }
+    .app-title h1 { font-family: 'Noto Serif SC', serif; font-weight: 900; font-size: 18px; color: #1e293b; white-space: nowrap; line-height: 1.1; }
+    .app-title p { font-size: 11px; color: #94a3b8; font-family: 'Inter', sans-serif; font-weight: 600; margin-top: 4px; letter-spacing: 0.5px; }
+
+    /* --- 设计署名 --- */
+    .designer-signature {
+        margin-top: auto;
+        padding-top: 20px;
+        padding-bottom: 10px;
+        text-align: center;
+        border-top: 1px solid #f1f5f9;
+        font-family: 'Dancing Script', cursive;
+        color: #94a3b8;
+        font-size: 14px;
+        background: linear-gradient(to right, #94a3b8, #64748b);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        pointer-events: none;
+    }
+
+    /* --- 奖励池配置 --- */
+    .reward-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(100%, 1fr)); }
+    .reward-card { display: flex; align-items: center; justify-content: space-between; background: white; border: 1px solid #e2e8f0; border-radius: 10px; padding: 10px 14px; transition: all 0.2s; position: relative; overflow: hidden; }
+    .reward-card:hover { border-color: var(--primary); box-shadow: 0 4px 12px rgba(91, 91, 214, 0.08); transform: translateY(-1px); }
+    .reward-input-name { border: none; font-weight: 600; color: #334155; font-size: 14px; width: 100%; outline: none; background: transparent; }
+    .reward-weight-tag { background: #f1f5f9; padding: 2px 8px; border-radius: 6px; font-size: 12px; color: #64748b; font-weight: bold; border: 1px solid #e2e8f0; display: flex; align-items: center; gap: 4px; min-width: 60px;}
+    .reward-weight-input { width: 100%; background: transparent; border: none; text-align: center; outline: none; font-weight: bold; color: var(--primary); }
+
+    /* --- 制度编辑器 (富文本) --- */
+    .rich-editor-toolbar { display: flex; gap: 8px; padding: 8px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; border-radius: 8px 8px 0 0; flex-wrap: wrap; }
+    .editor-btn { padding: 4px 8px; background: white; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 12px; color: #475569; cursor: pointer; transition: 0.2s; }
+    .editor-btn:hover { background: #f1f5f9; border-color: var(--primary); color: var(--primary); }
+    
+    .rich-editor-content { flex: 1; overflow-y: auto; padding: 15px; font-family: 'Noto Serif SC', serif; line-height: 1.6; color: #334155; font-size: 14px; outline: none; background: white; border-radius: 0 0 8px 8px; }
+    .rich-editor-content h1 { font-size: 1.5em; font-weight: bold; color: var(--primary); border-bottom: 2px solid #e2e8f0; padding-bottom: 5px; margin-bottom: 10px; }
+    .rich-editor-content h2 { font-size: 1.2em; font-weight: bold; color: #1e293b; border-left: 4px solid var(--primary); padding-left: 8px; margin-top: 15px; margin-bottom: 8px; background: #f8fafc; }
+    .rich-editor-content p { margin-bottom: 8px; }
+    .rich-editor-content table { width: 100%; border-collapse: collapse; margin: 10px 0; border: 1px solid #cbd5e1; }
+    .rich-editor-content th, .rich-editor-content td { border: 1px solid #cbd5e1; padding: 6px; text-align: left; }
+    .rich-editor-content th { background: #f1f5f9; }
+
+    /* --- 分组管理 --- */
+    .group-manager-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 24px; padding-bottom: 40px;}
+    .group-card-large { background: white; border-radius: 16px; border: 1px solid #e2e8f0; display: flex; flex-direction: column; box-shadow: 0 2px 4px rgba(0,0,0,0.02); transition: transform 0.2s; }
+    .group-header-large { padding: 14px 18px; border-bottom: 1px solid #f1f5f9; background: linear-gradient(to right, #f8fafc, #ffffff); font-weight: 700; color: #334155; display: flex; justify-content: space-between; align-items: center; border-radius: 16px 16px 0 0; }
+    .group-name-input { background: transparent; border: none; border-bottom: 1px dashed #cbd5e1; width: 120px; font-size: 14px; color: var(--primary); font-weight: bold; padding: 0 4px; text-align: right; outline: none; transition: 0.2s; }
+    .group-name-input:focus { border-bottom: 1px solid var(--primary); background: #f0fdfa; }
+    .student-list-large { padding: 12px; min-height: 120px; background: white; flex-grow: 1; border-radius: 0 0 16px 16px; }
+    .student-item-large { padding: 10px 14px; margin-bottom: 8px; border-radius: 8px; background: #f8fafc; border: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center; cursor: grab; transition: 0.2s; }
+    .student-item-large:hover { background: white; border-color: var(--primary); box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+    .btn-move { width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; border-radius: 4px; color: #94a3b8; background: white; border: 1px solid #e2e8f0; font-size: 10px; cursor: pointer; transition: 0.2s; }
+    .btn-move:hover { background: var(--primary); color: white; border-color: var(--primary); }
+    .role-badge { font-size: 10px; padding: 2px 8px; border-radius: 10px; color: white; font-weight: 600; min-width: 50px; text-align: center; }
+    .role-1 { background: linear-gradient(135deg, #ef4444, #dc2626); } 
+    .role-2 { background: linear-gradient(135deg, #f59e0b, #d97706); } 
+    .role-3 { background: linear-gradient(135deg, #10b981, #059669); } 
+    .role-4 { background: linear-gradient(135deg, #3b82f6, #2563eb); }
+
+    /* --- 周日志 --- */
+    #log-print-wrapper { width: 297mm; height: 210mm; background: white; margin: 0 auto; box-shadow: 0 10px 30px rgba(0,0,0,0.1); transform-origin: top left; display: flex; justify-content: center; align-items: center; color: #1e293b; }
+    .log-content-border { width: 280mm; height: 195mm; display: flex; gap: 12px; border: 1px solid #cbd5e1; border-radius: 12px; padding: 12px; box-sizing: border-box; }
+    .log-table { width: 100%; border-collapse: collapse; border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden; font-size: 12px; }
+    .log-th { background-color: #f8fafc; border: 1px solid #cbd5e1; padding: 2px; font-weight: 700; text-align: center; color: #334155; font-size: 11px; }
+    .log-td { border: 1px solid #cbd5e1; text-align: center; vertical-align: middle; height: 14%; padding: 2px; }
+    .circle-check { width: 13px; height: 13px; border: 1.5px solid #334155; border-radius: 50%; display: inline-block; margin-top: 2px; }
+    .tally-box { font-size: 24px; color: #e2e8f0; font-weight: bold; line-height: 1; margin-top: -2px; }
+    .log-dash-line { border-bottom: 2px solid #64748b; width: 100%; margin-top: auto; margin-bottom: 2px; height: 10px; }
+
+    /* --- 制度文档 (滚动修复) --- */
+    .policy-wrapper { 
+        flex: 1; display: flex; flex-direction: column; height: 100%; 
+        background: #f1f5f9; border-radius: 12px; border: 1px solid #e2e8f0; overflow: hidden;
+    }
+    .policy-container { 
+        width: 100%; 
+        height: 100%; 
+        overflow-y: auto; /* Allow scrolling */
+        padding: 40px 20px; 
+        display: flex; 
+        justify-content: center; 
+        align-items: flex-start; /* Fix for scrolling overflow */
+    }
+    .policy-paper { 
+        width: 210mm; 
+        min-height: 297mm; 
+        padding: 30mm 25mm; 
+        background: #fff; 
+        box-shadow: 0 10px 30px rgba(0,0,0,0.1); 
+        color: #1e293b; 
+        font-family: 'Noto Serif SC', serif; 
+        line-height: 1.8; 
+        position: relative;
+        flex-shrink: 0;
+    }
+    /* 装饰性页眉 (屏幕显示) */
+    .policy-paper::before { content: ""; position: absolute; top: 0; left: 0; width: 100%; height: 12px; background: linear-gradient(90deg, #6366f1 0%, #a855f7 50%, #ec4899 100%); }
+    .policy-paper::after { content: ""; position: absolute; bottom: 0; left: 0; width: 100%; height: 8px; background: #f1f5f9; }
+    
+    .policy-h1 { 
+        font-size: 32px; font-weight: 900; text-align: center; margin-bottom: 40px; 
+        background: linear-gradient(to right, #1e1b4b, #4338ca); -webkit-background-clip: text; -webkit-text-fill-color: transparent; 
+        padding-bottom: 20px; border-bottom: 1px solid #e2e8f0; letter-spacing: 2px;
+    }
+    .policy-h2 { 
+        font-size: 18px; font-weight: 800; color: #4338ca; margin-top: 30px; margin-bottom: 15px; 
+        display: flex; align-items: center; gap: 10px; 
+        background: #f8fafc; padding: 8px 12px; border-radius: 6px; border-left: 6px solid #4338ca;
+    }
+    .policy-p { margin-bottom: 12px; text-align: justify; font-size: 14px; color: #334155; }
+    .policy-table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 13px; border: 1px solid #cbd5e1; }
+    .policy-table th { background: #f1f5f9; font-weight: 800; text-align: left; padding: 12px; border: 1px solid #cbd5e1; color: #0f172a; }
+    .policy-table td { padding: 12px; color: #334155; vertical-align: top; border: 1px solid #cbd5e1; }
+
+    /* --- 荣耀颁奖台 --- */
+    .podium-container { display: flex; align-items: flex-end; justify-content: center; gap: 20px; height: 250px; margin-bottom: 40px; padding-top: 20px; }
+    .podium-step { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; }
+    .podium-block { width: 100%; border-radius: 12px 12px 0 0; display: flex; align-items: center; justify-content: center; font-weight: 900; color: white; font-size: 32px; box-shadow: 0 10px 20px rgba(0,0,0,0.1); position: relative; }
+    .podium-rank-1 { height: 160px; background: linear-gradient(to bottom, #fbbf24, #d97706); z-index: 3; }
+    .podium-rank-2 { height: 120px; background: linear-gradient(to bottom, #94a3b8, #64748b); z-index: 2; }
+    .podium-rank-3 { height: 90px; background: linear-gradient(to bottom, #d97706, #92400e); z-index: 1; }
+    .winner-card { background: white; padding: 12px; border-radius: 12px; box-shadow: 0 8px 16px rgba(0,0,0,0.1); margin-bottom: 15px; text-align: center; width: 100%; transform: translateY(0); transition: 0.3s; border: 2px solid white; }
+    .winner-name { font-weight: 800; color: #1e293b; font-size: 18px; margin-bottom: 4px; }
+    .tier-card { background: white; border-radius: 16px; border: 1px solid #e2e8f0; padding: 20px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.05); transition: 0.3s; }
+    .tier-header { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 18px; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 2px dashed #f1f5f9; }
+    .tier-list { display: flex; flex-wrap: wrap; gap: 10px; }
+    .group-tag { background: #f8fafc; padding: 6px 12px; border-radius: 8px; font-size: 14px; color: #475569; font-weight: 600; border: 1px solid #e2e8f0; }
+
+    /* --- 弹窗 --- */
+    .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; z-index: 100; opacity: 0; pointer-events: none; transition: opacity 0.2s; backdrop-filter: blur(4px); }
+    .modal-overlay.open { opacity: 1; pointer-events: auto; }
+    .modal-content { background: white; padding: 32px; border-radius: 20px; width: 600px; max-width: 90%; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); transform: scale(0.95); transition: transform 0.2s; }
+    .modal-overlay.open .modal-content { transform: scale(1); }
+
+    /* --- 趋势图 Grid --- */
+    .trend-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+    .trend-card { background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
+    .trend-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .trend-score { font-size: 24px; font-weight: 900; color: var(--primary); }
+    .chart-container { position: relative; height: 100px; overflow-x: auto; overflow-y: hidden; }
+    .chart-inner { height: 100%; }
+
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+</style>
+</head>
+<body>
+
+<div class="app-container">
+    <!-- Sidebar -->
+    <div class="sidebar">
+        <div class="p-6 border-b border-gray-100 flex-1 flex flex-col">
+            <div class="app-header">
+                <img src="https://p.ipic.vip/lhgb6n.png" class="school-logo" alt="logo">
+                <div class="app-title">
+                    <h1>课堂小组合作管理</h1>
+                    <p>v8.3 最终版</p>
+                </div>
+            </div>
+            <div class="flex gap-2 mb-2">
+                <div class="relative flex-1">
+                    <select id="classSelector" class="w-full bg-gray-50 border border-gray-200 text-sm rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-200 outline-none appearance-none font-bold text-gray-700" onchange="changeClass(this.value)"></select>
+                    <div class="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none text-gray-500"><i class="fas fa-chevron-down text-xs"></i></div>
+                </div>
+                <button onclick="openClassManager()" class="w-10 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 flex items-center justify-center transition" title="管理班级"><i class="fas fa-cog"></i></button>
+            </div>
+            <button onclick="addClass()" class="text-xs text-indigo-600 font-medium hover:text-indigo-800 transition block w-full text-center py-2 bg-indigo-50 rounded-lg hover:bg-indigo-100">+ 新建班级</button>
+        
+            <nav class="mt-6 space-y-1 flex-1">
+                <div class="px-3 text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">核心</div>
+                <div class="nav-item active" onclick="switchView('dashboard')"><i class="fas fa-chart-pie w-5"></i> <span>数据概览</span></div>
+                <div class="nav-item" onclick="switchView('ranking')"><i class="fas fa-trophy w-5"></i> <span>晋级管理</span></div>
+                <div class="nav-item" onclick="switchView('awards')"><i class="fas fa-crown w-5"></i> <span>荣誉奖励</span></div>
+                <div class="px-3 text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 mt-6">工具</div>
+                <div class="nav-item" onclick="switchView('weekly-log')"><i class="fas fa-print w-5"></i> <span>每周日志</span></div>
+                <div class="px-3 text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 mt-6">设置</div>
+                <div class="nav-item" onclick="switchView('rules')"><i class="fas fa-scroll w-5"></i> <span>制度奖励</span></div>
+                <div class="nav-item" onclick="switchView('settings')"><i class="fas fa-sliders-h w-5"></i> <span>分组管理</span></div>
+            </nav>
+            <div class="designer-signature">Designed by Newsun Lee</div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        
+        <!-- 1. 数据概览 -->
+        <div id="view-dashboard" class="view-section active">
+            <header class="mb-6 flex-shrink-0"><h2 class="text-2xl font-bold text-gray-900">班级数据看板</h2></header>
+            <div class="grid grid-cols-3 gap-6 mb-6 flex-shrink-0">
+                <div class="card border-l-4 border-indigo-500 py-5"><p class="text-xs text-gray-500 font-bold uppercase tracking-wider">学生总数</p><h3 class="text-3xl font-black mt-1 text-gray-800" id="dash-total-students">0</h3></div>
+                <div class="card border-l-4 border-emerald-500 py-5"><p class="text-xs text-gray-500 font-bold uppercase tracking-wider">小组数量</p><h3 class="text-3xl font-black mt-1 text-gray-800" id="dash-total-groups">0</h3></div>
+                <div class="card border-l-4 border-amber-500 py-5"><p class="text-xs text-gray-500 font-bold uppercase tracking-wider">平均分</p><h3 class="text-3xl font-black mt-1 text-gray-800" id="dash-avg-score">0</h3></div>
+            </div>
+            
+            <div class="grid grid-cols-2 gap-6 flex-1 min-h-[300px]">
+                <div class="card flex flex-col">
+                    <h3 class="font-bold mb-6 text-gray-800 flex items-center gap-2"><i class="fas fa-chart-bar text-indigo-500"></i> 实时战力分布 (含历史对比)</h3>
+                    <div class="flex-1 relative" id="chart-container-wrapper"><canvas id="groupBalanceChart"></canvas></div>
+                </div>
+                <div class="card card-flush flex flex-col">
+                    <div class="p-5 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
+                        <h3 class="font-bold text-gray-800 flex items-center gap-2"><i class="fas fa-medal text-amber-500"></i> 荣誉榜单</h3>
+                    </div>
+                    <div class="flex-1 overflow-y-auto p-0">
+                        <table class="w-full text-sm text-left">
+                            <thead class="bg-white text-gray-500 sticky top-0 border-b shadow-sm"><tr><th class="p-4 pl-6">小组</th><th class="p-4">夺冠次数</th><th class="p-4">获奖情况</th></tr></thead>
+                            <tbody id="honor-board-body" class="divide-y divide-gray-50"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 2. 晋级管理 (恢复趋势卡片) -->
+        <div id="view-ranking" class="view-section">
+            <header class="flex justify-between items-center mb-6 flex-shrink-0">
+                <div><h2 class="text-2xl font-bold text-gray-900">晋级管理</h2><p class="text-sm text-gray-500 mt-1">当前赛季：第 <span id="rank-week-num" class="font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">1</span> 周</p></div>
+                <div class="flex gap-3 bg-white p-1 rounded-lg border border-gray-200 shadow-sm">
+                    <button onclick="toggleRankingMode('week')" class="px-3 py-1.5 text-sm rounded-md font-medium transition" id="btn-rank-week">按本周得分</button>
+                    <button onclick="toggleRankingMode('total')" class="px-3 py-1.5 text-sm rounded-md font-medium transition text-white bg-indigo-600 shadow-sm" id="btn-rank-total">按累计总分</button>
+                </div>
+                <div class="flex gap-3">
+                    <button onclick="toggleHistoryMode()" id="btn-history-mode" class="btn btn-outline text-sm"><i class="fas fa-edit mr-1"></i> 数据修正</button>
+                    <button onclick="saveRankWeek()" class="btn btn-primary text-sm"><i class="fas fa-save mr-1"></i> 结算本周</button>
+                </div>
+            </header>
+            
+            <div class="flex-1 flex flex-col gap-6 overflow-hidden">
+                <div class="card card-flush flex-1 overflow-y-auto min-h-0 flex flex-col max-h-[40%]">
+                    <div id="rank-input-mode" class="flex-1">
+                        <table class="w-full text-sm text-left">
+                            <thead class="bg-gray-50 text-gray-600 sticky top-0 z-10 border-b border-gray-200"><tr><th class="p-3 pl-6 font-bold">排名</th><th class="p-3 font-bold">小组</th><th class="p-3 font-bold">当前段位</th><th class="p-3 font-bold">累计总分</th><th class="p-3 font-bold">本周得分</th><th class="p-3 font-bold bg-indigo-50 text-indigo-700 w-32 text-center border-l">周得分输入</th></tr></thead>
+                            <tbody id="rank-entry-body" class="divide-y divide-gray-100"></tbody>
+                        </table>
+                    </div>
+                    <div id="rank-history-mode" class="hidden p-4">
+                         <div class="flex justify-between items-center mb-4 bg-yellow-50 p-3 rounded-lg border border-yellow-200 text-yellow-800"><span class="text-sm font-bold flex items-center gap-2"><i class="fas fa-exclamation-triangle"></i> 修正模式：修改历史数据将重新计算排名</span><button onclick="saveHistoryCorrection()" class="btn btn-primary text-xs bg-yellow-600 border-none hover:bg-yellow-700">保存修正</button></div>
+                        <div class="overflow-x-auto"><table class="w-full text-sm text-left" id="history-table"></table></div>
+                    </div>
+                </div>
+                
+                <div class="flex-1 overflow-y-auto bg-gray-50 rounded-xl border border-gray-200 p-4">
+                    <h3 class="font-bold mb-4 text-sm text-gray-600 flex items-center gap-2 uppercase tracking-wider"><i class="fas fa-chart-line"></i> 分组周次进退步趋势 (独立卡片)</h3>
+                    <div class="trend-grid" id="trend-grid-container"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. 荣誉奖励 -->
+        <div id="view-awards" class="view-section">
+            <header class="flex justify-between items-center mb-4 flex-shrink-0">
+                <div class="flex items-center gap-3"><h2 class="text-2xl font-bold text-gray-900">荣誉奖励</h2></div>
+                <div class="flex gap-4 items-center">
+                    <div class="flex bg-gray-100 p-1 rounded-lg">
+                        <button class="px-4 py-1.5 text-sm font-bold rounded-md bg-white shadow-sm text-indigo-600" id="award-mode-week" onclick="setAwardMode('week')">本周榜单</button>
+                        <button class="px-4 py-1.5 text-sm font-bold rounded-md text-gray-500 hover:text-gray-700" id="award-mode-total" onclick="setAwardMode('total')">赛季总榜</button>
+                    </div>
+                    <button onclick="distributeRewards()" class="btn btn-primary bg-amber-500 hover:bg-amber-600 border-none shadow-lg shadow-amber-200"><i class="fas fa-magic mr-1"></i> 生成奖励方案</button>
+                </div>
+            </header>
+
+            <div class="flex-1 flex flex-col justify-center items-center overflow-y-auto bg-gradient-to-b from-white to-indigo-50 rounded-2xl border border-indigo-100 shadow-sm p-8">
+                <div id="podium-area" class="podium-container w-full max-w-4xl mx-auto mb-12"></div>
+                <div class="w-full max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-8">
+                    <div class="tier-card border-indigo-200 shadow-indigo-100/50 shadow-xl bg-gradient-to-br from-white to-indigo-50"><div class="tier-header text-indigo-700"><i class="fas fa-gem text-xl"></i> 钻石段位 (前25%)</div><div class="tier-list" id="tier-list-diamond"></div></div>
+                    <div class="tier-card border-amber-200 shadow-amber-100/50 shadow-xl bg-gradient-to-br from-white to-amber-50"><div class="tier-header text-amber-700"><i class="fas fa-crown text-xl"></i> 黄金段位 (25-50%)</div><div class="tier-list" id="tier-list-gold"></div></div>
+                    <div class="tier-card border-slate-200 shadow-slate-100/50 shadow-xl bg-gradient-to-br from-white to-slate-50"><div class="tier-header text-slate-700"><i class="fas fa-shield-alt text-xl"></i> 白银/青铜段位</div><div class="tier-list" id="tier-list-silver"></div></div>
+                </div>
+                <div id="award-config-area" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+                    <div class="bg-white p-8 rounded-2xl shadow-2xl w-[600px] max-w-[90%]">
+                        <h3 class="font-bold text-xl mb-6 text-gray-800 flex items-center gap-2"><i class="fas fa-gift text-pink-500"></i> 奖励分配向导</h3>
+                        <div class="grid grid-cols-2 gap-4 mb-6">
+                            <div class="p-3 bg-yellow-50 rounded-xl border border-yellow-100"><label class="text-xs font-bold text-yellow-700 block mb-1">🥇 冠军奖励</label><input type="text" id="aw-1" class="w-full bg-white border border-yellow-200 rounded p-2 text-sm font-medium"></div>
+                            <div class="p-3 bg-gray-50 rounded-xl border border-gray-200"><label class="text-xs font-bold text-gray-600 block mb-1">🥈 亚军奖励</label><input type="text" id="aw-2" class="w-full bg-white border border-gray-300 rounded p-2 text-sm font-medium"></div>
+                            <div class="p-3 bg-orange-50 rounded-xl border border-orange-100"><label class="text-xs font-bold text-orange-700 block mb-1">🥉 季军奖励</label><input type="text" id="aw-3" class="w-full bg-white border border-orange-200 rounded p-2 text-sm font-medium"></div>
+                            <div class="p-3 bg-indigo-50 rounded-xl border border-indigo-100"><label class="text-xs font-bold text-indigo-700 block mb-1">👑 黄金段位</label><input type="text" id="aw-gold" class="w-full bg-white border border-indigo-200 rounded p-2 text-sm font-medium"></div>
+                        </div>
+                        <div class="flex justify-end gap-3"><button onclick="cancelAward()" class="btn btn-outline">取消</button><button onclick="confirmAndSaveAwards()" class="btn btn-primary">确认并发放</button></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 4. 每周日志 -->
+        <div id="view-weekly-log" class="view-section">
+            <header class="flex justify-between items-center mb-4 flex-shrink-0">
+                <h2 class="text-2xl font-bold text-gray-900">每周日志</h2>
+                <button onclick="exportWeeklyLogPDF()" class="btn btn-primary bg-red-600 hover:bg-red-700 border-none shadow-red-200"><i class="fas fa-file-pdf mr-2"></i>导出 PDF</button>
+            </header>
+            <div class="grid grid-cols-12 gap-6 flex-1 overflow-hidden">
+                <div class="col-span-3 overflow-y-auto pr-1 space-y-4">
+                    <div class="card p-5">
+                        <h3 class="font-bold mb-4 text-sm border-b pb-2 text-gray-700">表头配置</h3>
+                        <div class="space-y-3">
+                            <input type="text" id="log-title" class="w-full border rounded px-2 py-1.5 text-sm bg-gray-50 font-bold" value="🚀 英语小组合作学习周日志" oninput="renderLogPreview()">
+                            <div class="bg-gray-50 p-2 rounded border"><label class="text-xs font-bold text-indigo-600">维度1 (作业)</label><input type="text" id="log-h1" class="w-full border rounded px-2 py-1 text-xs mb-1" value="作业" oninput="renderLogPreview()"><input type="text" id="log-s1" class="w-full border rounded px-2 py-1 text-xs text-gray-500" value="A=2, B=1" oninput="renderLogPreview()"></div>
+                            <div class="bg-gray-50 p-2 rounded border"><label class="text-xs font-bold text-indigo-600">维度2 (听写)</label><input type="text" id="log-h2" class="w-full border rounded px-2 py-1 text-xs mb-1" value="听写" oninput="renderLogPreview()"><input type="text" id="log-s2" class="w-full border rounded px-2 py-1 text-xs text-gray-500" value="过=2, 二次=1" oninput="renderLogPreview()"></div>
+                            <div class="bg-gray-50 p-2 rounded border"><label class="text-xs font-bold text-indigo-600">维度3 (展示)</label><input type="text" id="log-h3" class="w-full border rounded px-2 py-1 text-xs mb-1" value="课堂展示" oninput="renderLogPreview()"><div class="flex gap-1"><input type="text" id="log-s3a" class="w-1/2 border rounded px-1 py-1 text-[10px] text-gray-500" value="主动+2" oninput="renderLogPreview()"><input type="text" id="log-s3b" class="w-1/2 border rounded px-1 py-1 text-[10px] text-gray-500" value="代表+5" oninput="renderLogPreview()"></div></div>
+                            <div class="bg-gray-50 p-2 rounded border"><label class="text-xs font-bold text-indigo-600">维度4 (互助)</label><input type="text" id="log-h4" class="w-full border rounded px-2 py-1 text-xs mb-1" value="互助" oninput="renderLogPreview()"><input type="text" id="log-r4" class="w-full border rounded px-2 py-1 text-xs text-amber-600 font-bold" value="★4号过关+5" oninput="renderLogPreview()"></div>
+                        </div>
+                        <h3 class="font-bold mb-2 mt-4 text-sm border-b pb-2 text-gray-700">表格配置</h3>
+                        <div class="space-y-3">
+                            <div class="bg-white p-2 rounded border border-indigo-200"><label class="text-xs font-bold text-gray-600">复选框 1</label><input type="text" id="log-c1" class="w-full border rounded px-2 py-1 text-xs text-gray-700" value="★4号过关+5" oninput="renderLogPreview()"></div>
+                            <div class="bg-white p-2 rounded border border-indigo-200"><label class="text-xs font-bold text-gray-600">复选框 2</label><input type="text" id="log-c2" class="w-full border rounded px-2 py-1 text-xs text-gray-700" value="★4号全A+5" oninput="renderLogPreview()"></div>
+                            <div class="bg-white p-2 rounded border border-gray-200"><label class="text-xs font-bold text-gray-500">复选框 3 (选填)</label><input type="text" id="log-c3" class="w-full border rounded px-2 py-1 text-xs text-gray-700" placeholder="选填" oninput="renderLogPreview()"></div>
+                            <div class="bg-white p-2 rounded border border-gray-200"><label class="text-xs font-bold text-gray-500">复选框 4 (选填)</label><input type="text" id="log-c4" class="w-full border rounded px-2 py-1 text-xs text-gray-700" placeholder="选填" oninput="renderLogPreview()"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-span-9 bg-gray-100 rounded-xl overflow-hidden flex justify-center items-center relative border border-gray-200">
+                    <div style="transform: scale(0.65); transform-origin: center;"><div id="log-print-wrapper"></div></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 5. 制度奖励 (滚动修复) -->
+        <div id="view-rules" class="view-section">
+            <header class="flex justify-between items-center mb-6 flex-shrink-0">
+                <div class="flex items-center gap-3"><h2 class="text-2xl font-bold text-gray-900">制度奖励</h2></div>
+                <div class="flex gap-3"><button onclick="saveRulesAndRewards()" class="btn btn-primary"><i class="fas fa-save mr-2"></i>保存</button><button onclick="exportRulesPDF()" class="btn btn-outline"><i class="fas fa-file-pdf mr-2"></i>导出文档</button></div>
+            </header>
+            <div class="flex gap-6 flex-1 overflow-hidden">
+                <div class="w-1/3 flex flex-col gap-6 h-full overflow-hidden">
+                    <div class="card flex flex-col gap-2 max-h-[40%] flex-shrink-0">
+                        <h3 class="font-bold text-sm text-gray-700 mb-2 flex items-center justify-between">🎁 奖励池配置</h3>
+                        <div id="reward-list-container" class="overflow-y-auto pr-1 flex-1 reward-grid content-start"></div>
+                        <div class="flex gap-2 pt-3 border-t mt-1"><input type="text" id="new-reward-name" placeholder="新奖励名称..." class="flex-1 border rounded px-3 py-2 text-sm outline-none focus:border-indigo-500 transition"><input type="number" id="new-reward-weight" placeholder="10" class="w-14 border rounded px-1 py-2 text-sm text-center outline-none focus:border-indigo-500" value="10"><button onclick="addReward()" class="bg-indigo-600 text-white rounded w-10 flex items-center justify-center hover:bg-indigo-700 transition"><i class="fas fa-plus"></i></button></div>
+                    </div>
+                    <div class="card flex-1 flex flex-col min-h-0"><h3 class="font-bold text-sm text-gray-700 mb-2">📝 制度内容 (HTML)</h3><div class="flex-1 relative"><textarea id="rules-editor" class="code-editor" oninput="renderRulesPreview()"></textarea></div></div>
+                </div>
+                <div class="w-2/3 bg-gray-50 rounded-xl overflow-hidden shadow-inner border border-gray-200 relative">
+                    <div class="policy-wrapper"><div class="policy-container"><div id="rules-preview" class="policy-paper"><div class="policy-header-deco"></div></div></div></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 6. 分组管理 -->
+        <div id="view-settings" class="view-section">
+            <header class="mb-6 flex-shrink-0"><h2 class="text-2xl font-bold text-gray-900">分组管理</h2></header>
+            <div class="flex justify-between items-center mb-6">
+                <div class="flex gap-3 items-center">
+                   <button onclick="downloadTemplate('roster')" class="btn btn-outline text-xs"><i class="fas fa-download mr-1"></i>下载名单模板</button>
+                   <div class="relative"><input type="file" id="excelFile" accept=".xlsx, .xls" class="hidden" onchange="handleListImport(this)"><label for="excelFile" class="btn btn-primary text-xs cursor-pointer"><i class="fas fa-upload mr-1"></i>导入名单</label></div>
+                   <div class="h-6 w-px bg-gray-300 mx-2"></div>
+                   <button onclick="downloadTemplate('score')" class="btn btn-outline text-xs"><i class="fas fa-download mr-1"></i>下载成绩模板</button>
+                   <div class="relative"><input type="file" id="scoreFile" accept=".xlsx, .xls" class="hidden" onchange="handleScoreImport(this)"><label for="scoreFile" class="btn btn-outline text-xs cursor-pointer text-indigo-600 border-indigo-200"><i class="fas fa-sync-alt mr-1"></i>更新成绩</label></div>
+                </div>
+                <div class="flex gap-3">
+                   <button onclick="exportData()" class="btn btn-outline text-xs text-blue-600 border-blue-200"><i class="fas fa-file-export mr-1"></i>系统备份</button>
+                   <label class="btn btn-outline text-xs text-blue-600 border-blue-200 cursor-pointer"><i class="fas fa-file-import mr-1"></i>系统恢复<input type="file" hidden accept=".json" onchange="importData(this)"></label>
+                   <button onclick="clearClassData()" class="btn btn-outline text-xs text-red-500 border-red-200 hover:bg-red-50"><i class="fas fa-trash-alt mr-1"></i>一键清空</button>
+                </div>
+            </div>
+            <div class="flex-1 flex flex-col min-h-0">
+                <div class="flex justify-between items-end mb-4 flex-shrink-0">
+                    <div class="flex gap-4 items-center bg-white p-2 rounded-lg border border-gray-200 shadow-sm">
+                        <div class="flex flex-col gap-1 px-2 border-r border-gray-200"><span class="text-[10px] font-bold text-gray-500 uppercase">组数</span><input type="number" id="algo-group-count" class="w-12 text-xs border rounded p-1 text-center font-bold" value="12" onchange="saveConfig()"></div>
+                        <div class="flex flex-col gap-1 px-2 border-r border-gray-200"><span class="text-[10px] font-bold text-gray-500 uppercase">角色名称</span><div class="flex gap-1"><input type="text" id="role-n1" class="w-12 text-[10px] border rounded p-1" value="组长" onchange="saveConfig()"><input type="text" id="role-n2" class="w-12 text-[10px] border rounded p-1" value="检查" onchange="saveConfig()"><input type="text" id="role-n3" class="w-12 text-[10px] border rounded p-1" value="记录" onchange="saveConfig()"><input type="text" id="role-n4" class="w-12 text-[10px] border rounded p-1" value="挑战" onchange="saveConfig()"></div></div>
+                        <div class="flex items-center gap-2 px-2"><label class="text-xs flex items-center gap-1 cursor-pointer select-none"><input type="checkbox" id="algo-history-weight" class="text-indigo-600 rounded"> <span>综合历史表现</span></label><button onclick="runAutoGrouping()" class="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded hover:bg-indigo-700 shadow-sm transition font-bold">⚡ S 型重组</button></div>
+                    </div>
+                </div>
+                <div class="group-manager-grid overflow-y-auto flex-1 pr-2 pt-2" id="drag-drop-area"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Class Manager Modal -->
+    <div class="modal-overlay" id="classManagerModal">
+        <div class="modal-content">
+            <div class="flex justify-between items-center mb-4 border-b pb-2">
+                <h3 class="font-bold text-lg text-gray-800">班级管理</h3>
+                <button onclick="document.getElementById('classManagerModal').classList.remove('open')" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="space-y-3 max-h-[60vh] overflow-y-auto" id="class-manager-list"></div>
+        </div>
+    </div>
+
+    <!-- Reward Modal -->
+    <div class="modal-overlay" id="rewardModal">
+        <div class="modal-content">
+            <div class="flex justify-between items-center mb-6 border-b pb-4">
+                <h2 class="text-xl font-bold text-gray-900 flex items-center gap-2"><i class="fas fa-gift text-amber-500"></i> 奖励分配向导</h2>
+                <button onclick="closeRewardModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="space-y-4 mb-8">
+                <div class="bg-gradient-to-r from-yellow-50 to-white p-4 rounded-xl border border-yellow-100 shadow-sm"><div class="flex justify-between mb-2"><span class="font-bold text-yellow-800 flex items-center gap-2"><i class="fas fa-crown text-yellow-500"></i> 第一名：<span id="r-name-1" class="text-gray-900"></span></span></div><input type="text" id="r-val-1" class="w-full border-yellow-200 border p-2.5 rounded-lg text-sm bg-white focus:ring-2 focus:ring-yellow-200 outline-none" placeholder="推荐奖品..."></div>
+                <div class="bg-gray-50 p-4 rounded-xl border border-gray-200"><div class="flex justify-between mb-2"><span class="font-bold text-gray-600 flex items-center gap-2"><i class="fas fa-medal text-gray-400"></i> 第二名：<span id="r-name-2" class="text-gray-900"></span></span></div><input type="text" id="r-val-2" class="w-full border-gray-200 border p-2.5 rounded-lg text-sm bg-white focus:ring-2 focus:ring-gray-200 outline-none" placeholder="推荐奖品..."></div>
+                <div class="bg-orange-50 p-4 rounded-xl border border-orange-100"><div class="flex justify-between mb-2"><span class="font-bold text-orange-800 flex items-center gap-2"><i class="fas fa-medal text-orange-500"></i> 第三名：<span id="r-name-3" class="text-gray-900"></span></span></div><input type="text" id="r-val-3" class="w-full border-orange-200 border p-2.5 rounded-lg text-sm bg-white focus:ring-2 focus:ring-orange-200 outline-none" placeholder="推荐奖品..."></div>
+                <div class="bg-indigo-50 p-4 rounded-xl border border-indigo-100"><div class="flex justify-between mb-2"><span class="font-bold text-indigo-800 flex items-center gap-2"><i class="fas fa-star text-indigo-500"></i> 黄金段位</span></div><p class="text-xs text-indigo-500 mb-2 font-medium bg-white/50 p-1 rounded inline-block" id="r-names-gold"></p><input type="text" id="r-val-gold" class="w-full border-indigo-200 border p-2.5 rounded-lg text-sm bg-white focus:ring-2 focus:ring-indigo-200 outline-none" placeholder="推荐奖品..."></div>
+            </div>
+            <div class="flex gap-3"><button onclick="closeRewardModal()" class="flex-1 btn btn-outline py-2.5">取消</button><button onclick="confirmRewards()" class="flex-1 btn btn-primary py-2.5 shadow-lg shadow-indigo-100">确认并保存记录</button></div>
+        </div>
+    </div>
+
+    <!-- Onboarding Modal -->
+    <div class="modal-overlay" id="setupModal">
+        <div class="modal-content relative">
+            <button onclick="document.getElementById('setupModal').classList.remove('open')" class="absolute top-4 right-4 text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+            <h2 class="text-xl font-bold mb-4 text-indigo-600">🎉 名单导入成功！</h2>
+            <p class="text-sm text-gray-600 mb-6">已识别 <span id="modal-student-count" class="font-bold">0</span> 名学生。接下来，让我们完成分组初始化。</p>
+            <div class="space-y-4 mb-8">
+                <div><label class="block text-sm font-bold text-gray-700 mb-1">1. 计划分为几组？</label><input type="number" id="modal-group-count" class="w-full border rounded p-2 text-sm" value="12"></div>
+                <div><label class="block text-sm font-bold text-gray-700 mb-1">2. 设定角色名称 (1-4号)</label><div class="grid grid-cols-4 gap-2"><input type="text" id="modal-role-1" value="组长" class="border rounded p-2 text-sm text-center"><input type="text" id="modal-role-2" value="检查员" class="border rounded p-2 text-sm text-center"><input type="text" id="modal-role-3" value="记录员" class="border rounded p-2 text-sm text-center"><input type="text" id="modal-role-4" value="挑战者" class="border rounded p-2 text-sm text-center"></div></div>
+            </div>
+            <button onclick="finishSetup()" class="w-full btn btn-primary py-3 text-base">✨ 执行智能分组并开始</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // --- Config & Data ---
+    const FULL_RULES = `<h1 class="policy-h1">初一英语“王者战队”合作学习实施方案</h1><blockquote>“不求人人成功，但求人人进步；不求人人第一，但求人人参与。” 本方案旨在通过“组内异质、组间同质”的分组模式，利用“捆绑评价”机制，打造互助共赢的学习共同体。</blockquote><h2 class="policy-h2">一、 战队建设 (Team Building)</h2><p class="policy-p"><strong>1. 分组原则：</strong><br>• <strong>S型分组：</strong>依据期中考试成绩，按照“S型”蛇形排列法，将全班分为12个战队。<br>• <strong>人员结构：</strong>每组4人，包含：<br>&nbsp;&nbsp;1号(Leader)：英语学霸，负责统筹与教学。<br>&nbsp;&nbsp;2号(Checker)：中坚力量，负责纠错与过关。<br>&nbsp;&nbsp;3号(Recorder)：潜力新星，负责记录与统计。<br>&nbsp;&nbsp;4号(Challenger)：逆袭黑马，是小组的重点帮扶对象。</p><h2 class="policy-h2">二、 评价机制 (The Rules)</h2><p class="policy-p">实行**“双轨制”**评价，即：小组总分 = 基础分 + 贡献分 + 帮扶红利。</p><table class="policy-table"><thead><tr><th>维度</th><th>项目</th><th>细则</th></tr></thead><tbody><tr><td>基础分</td><td>作业/听写</td><td>A+/过关=2分; B/补过=1分; 未交/未过=-2分</td></tr><tr><td>贡献分</td><td>课堂展示</td><td>主动起立回答=2分; 代表小组上台展示=5分</td></tr><tr><td>帮扶红利</td><td>逆袭加分</td><td>若4号成员听写一次性满分/背诵流利，<strong>全组+5分</strong></td></tr><tr><td>惩罚</td><td>违纪</td><td>讨论时聊闲天/未带课本=-5分</td></tr></tbody></table><h2 class="policy-h2">三、 晋级制度 (Ranking System)</h2><p class="policy-p">每两周为一个“赛季”，根据累计积分重新划分段位：</p><p class="policy-p">💎 <strong>璀璨钻石 (Top 25%)：</strong>特权：获得“免作业卡”一张，拥有优先挑选座位权。<br>👑 <strong>荣耀黄金 (25%-50%)：</strong>特权：获得英语电影欣赏券或免一次听写。<br>⚔️ <strong>坚韧白银 (50%-75%)：</strong>任务：需完成基础巩固练习，无奖惩。<br>🛡️ <strong>倔强青铜 (Bottom 25%)：</strong>挑战：全组负责打扫教室卫生一次。</p><p class="policy-p" style="text-align:right; font-size:12px; color:#999; margin-top:30px;">本制度解释权归英语备课组所有</p>`;
+    const DEFAULT_REWARDS = [{name: "免作业卡一张", weight: 10},{name: "优先挑选座位权", weight: 10},{name: "英语电影欣赏券", weight: 15},{name: "免一次听写", weight: 15},{name: "老师请喝奶茶", weight: 5}];
+
+    let db = {}; let currentClassId = ""; let sortables = []; let charts = []; let isHistoryMode = false; let currentAwardMode = 'week';
+
+    function init() {
+        const stored = localStorage.getItem('eclms_v83_db');
+        if (stored) { db = JSON.parse(stored); } else { createClass("初一(1)班"); }
+        renderClassSelector(); if (Object.keys(db).length > 0) changeClass(Object.keys(db)[0]);
+        document.querySelectorAll('.modal-overlay').forEach(el => el.classList.remove('open'));
+    }
+    function saveDB() { localStorage.setItem('eclms_v83_db', JSON.stringify(db)); }
+    function createClass(name) {
+        const id = 'c_' + Date.now();
+        db[id] = {
+            name: name, students: [],
+            config: { groupCount: 12, roles: ['组长', '检查员', '记录员', '挑战者'] },
+            rankData: { week: 1, history: {}, awardsLog: [] },
+            scoreHistory: [],
+            logConfig: { title: "🚀 英语小组合作学习周日志", h1: "📚作业", s1: "A=2, B=1", h2: "👂听写", s2: "过=2, 二次=1", h3: "🎤课堂展示", s3a: "主动+2", s3b: "代表+5", h4: "🤝互助", r4: "★4号过关+5", c1: "□ ★4号过关+5", c2: "□ ★4号全A+5" },
+            rulesContent: FULL_RULES, rewardPool: JSON.parse(JSON.stringify(DEFAULT_REWARDS)), groupNames: {}
+        };
+        saveDB(); return id;
+    }
+    function changeClass(id) {
+        currentClassId = id; document.getElementById('classSelector').value = id;
+        const c = db[id].config; const l = db[id].logConfig;
+        document.getElementById('algo-group-count').value = c.groupCount;
+        document.getElementById('role-n1').value = c.roles[0]||''; document.getElementById('role-n2').value = c.roles[1]||''; document.getElementById('role-n3').value = c.roles[2]||''; document.getElementById('role-n4').value = c.roles[3]||'';
+        document.getElementById('log-title').value = l.title; document.getElementById('log-h1').value = l.h1; document.getElementById('log-s1').value = l.s1; document.getElementById('log-h2').value = l.h2; document.getElementById('log-s2').value = l.s2; 
+        document.getElementById('log-h3').value = l.h3 || "🎤课堂展示"; document.getElementById('log-s3a').value = l.s3a || "主动+2"; document.getElementById('log-s3b').value = l.s3b || "代表+5";
+        document.getElementById('log-h4').value = l.h4; document.getElementById('log-r4').value = l.r4;
+        document.getElementById('log-c1').value = l.c1 || "□ ★4号过关+5"; document.getElementById('log-c2').value = l.c2 || "□ ★4号全A+5"; 
+        document.getElementById('log-c3').value = l.c3 || ""; document.getElementById('log-c4').value = l.c4 || ""; 
+        document.getElementById('rules-editor').value = db[id].rulesContent || FULL_RULES;
+        refreshCurrentView();
+    }
+    function refreshCurrentView() {
+        const view = document.querySelector('.view-section.active').id;
+        if(view === 'view-dashboard') renderDashboard();
+        else if(view === 'view-ranking') setTimeout(renderRankingView, 100);
+        else if(view === 'view-weekly-log') renderLogPreview();
+        else if(view === 'view-rules') renderRulesView();
+        else if(view === 'view-settings') renderGroupingEditor();
+        else if(view === 'view-awards') renderAwardsView();
+    }
+    function switchView(id) {
+        document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
+        document.getElementById(`view-${id}`).classList.add('active');
+        document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+        event.currentTarget.classList.add('active');
+        refreshCurrentView();
+    }
+    function saveConfig() {
+        const c = db[currentClassId].config;
+        c.groupCount = parseInt(document.getElementById('algo-group-count').value);
+        c.roles = [document.getElementById('role-n1').value, document.getElementById('role-n2').value, document.getElementById('role-n3').value, document.getElementById('role-n4').value];
+        saveDB(); renderGroupingEditor(); 
+    }
+
+    // --- Dashboard ---
+    function renderDashboard() {
+        const s = db[currentClassId].students; const gc = db[currentClassId].config.groupCount; const rd = db[currentClassId].rankData; const gn = db[currentClassId].groupNames || {};
+        document.getElementById('dash-total-students').innerText = s.length; document.getElementById('dash-total-groups').innerText = gc;
+        document.getElementById('dash-avg-score').innerText = s.length ? (s.reduce((a,b)=>a+b.score,0)/s.length).toFixed(1) : 0;
+        
+        const ctx = document.getElementById('groupBalanceChart'); 
+        if(window.dashChart) { window.dashChart.destroy(); } 
+        const labels=[], currentData=[]; const prevData = []; 
+        const history = db[currentClassId].scoreHistory || [];
+        const lastSnapshot = history.length > 0 ? history[history.length - 1].avgScores : {};
+
+        for(let i=1; i<=gc; i++) { 
+            labels.push(`G${i} ${gn[i]||''}`); 
+            const gs = s.filter(st => st.groupId == i); 
+            currentData.push(gs.length ? (gs.reduce((a,b)=>a+b.score,0)/gs.length).toFixed(1) : 0);
+            prevData.push(lastSnapshot[i] || 0); 
+        }
+
+        const datasets = [{label:'当前成绩', data: currentData, backgroundColor:'#5b5bd6', borderRadius:4}];
+        if(history.length > 0) { datasets.unshift({label:'前次成绩', data: prevData, backgroundColor:'#cbd5e1', borderRadius:4}); }
+
+        window.dashChart = new Chart(ctx, { 
+            type: 'bar', 
+            data: {labels, datasets}, 
+            options: { 
+                responsive:true, maintainAspectRatio:false, 
+                plugins: { legend:{display:true} }, 
+                animation: { onComplete: function() { const ctx = this.ctx; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'; ctx.font = 'bold 10px Inter'; this.data.datasets.forEach((dataset, i) => { ctx.fillStyle = dataset.backgroundColor; const meta = this.getDatasetMeta(i); meta.data.forEach((bar, index) => { const v = dataset.data[index]; if(v>0) ctx.fillText(v, bar.x, bar.y - 5); }); }); } } 
+            } 
+        });
+
+        let honorHTML = '';
+        for(let i=1; i<=gc; i++) {
+            const wins = (rd.awardsLog||[]).filter(l => l.group == i && l.rank == 1).length;
+            const prizes = [...new Set((rd.awardsLog||[]).filter(l => l.group == i).map(l => l.reward))].join(', ');
+            honorHTML += `<tr><td class="p-3 pl-6 border-b font-medium text-gray-700">第${i}组 ${gn[i]?`(${gn[i]})`:''}</td><td class="p-3 border-b text-indigo-600 font-bold">${wins}</td><td class="p-3 border-b text-xs text-gray-500">${prizes || '-'}</td></tr>`;
+        }
+        document.getElementById('honor-board-body').innerHTML = honorHTML;
+    }
+
+    // --- Ranking Management ---
+    let rankSortMode = 'total'; 
+    function toggleRankingMode(mode) {
+        rankSortMode = mode;
+        document.getElementById('btn-rank-week').className = mode==='week' ? "px-3 py-1.5 text-sm rounded-md font-medium transition text-white bg-indigo-600 shadow-sm" : "px-3 py-1.5 text-sm rounded-md font-medium transition text-gray-600 hover:bg-gray-100";
+        document.getElementById('btn-rank-total').className = mode==='total' ? "px-3 py-1.5 text-sm rounded-md font-medium transition text-white bg-indigo-600 shadow-sm" : "px-3 py-1.5 text-sm rounded-md font-medium transition text-gray-600 hover:bg-gray-100";
+        renderRankingView();
+    }
+    function renderRankingView() {
+        const rd = db[currentClassId].rankData; const gc = db[currentClassId].config.groupCount; const gn = db[currentClassId].groupNames || {};
+        document.getElementById('rank-week-num').innerText = rd.week;
+        for(let i=1; i<=gc; i++) if(!rd.history[`第${i}组`]) rd.history[`第${i}组`] = [];
+        const groups = []; 
+        for(let i=1; i<=gc; i++) { 
+            const name = `第${i}组`; 
+            const total = (rd.history[name]||[]).reduce((a,b)=>a+b,0);
+            const prevWeekScore = (rd.history[name]||[])[rd.week-2] || '-';
+            const currentWeekScore = parseInt(document.getElementById(`score-第${i}组`)?.value) || 0; 
+            groups.push({ id:i, displayName: `${name} ${gn[i]||''}`, total: total, prevWeekScore: prevWeekScore, weekScore: currentWeekScore, history: rd.history[name] }); 
+        }
+        const inputs = {}; groups.forEach(g => inputs[g.id] = document.getElementById(`score-第${g.id}组`)?.value || '');
+        if(rankSortMode === 'total') groups.sort((a,b) => b.total - a.total); else groups.sort((a,b) => (b.weekScore || 0) - (a.weekScore || 0));
+
+        document.getElementById('rank-entry-body').innerHTML = groups.map((g, i) => {
+            const p = (i+1)/gc; let label = p<=0.25?'💎 钻石':(p<=0.5?'👑 黄金':(p<=0.75?'⚔️ 白银':'🛡️ 青铜')); let color = p<=0.25?'text-indigo-600':(p<=0.5?'text-amber-500':(p<=0.75?'text-slate-500':'text-gray-600'));
+            return `<tr><td class="p-3 pl-6 border-b text-gray-400 font-mono">#${i+1}</td><td class="p-3 border-b font-bold text-gray-700">${g.displayName}</td><td class="p-3 border-b font-bold ${color}">${label}</td><td class="p-3 border-b text-indigo-600 font-bold">${g.prevWeekScore}</td><td class="p-3 border-b font-bold text-gray-900">${g.total}</td><td class="p-3 border-b border-l bg-indigo-50"><input type="number" id="score-第${g.id}组" class="border rounded w-full p-1 text-center bg-white focus:ring-2 focus:ring-indigo-300" value="${inputs[g.id]}" placeholder="0" oninput="if(rankSortMode==='week') setTimeout(renderRankingView, 500)"></td></tr>`; 
+        }).join('');
+
+        if(isHistoryMode) { 
+             let h = '<thead class="bg-gray-100 text-gray-600"><tr><th class="p-2">小组</th>'; for(let w=1; w<rd.week; w++) h += `<th class="p-2 text-center">W${w}</th>`; h += '</tr></thead><tbody>';
+             for(let i=1; i<=gc; i++) { const n = `第${i}组`; h += `<tr><td class="p-2 font-bold text-gray-700 border-b">${n}</td>`; rd.history[n].forEach((s, w) => h += `<td class="p-2 border-b text-center"><input type="number" class="w-12 border rounded text-center hist-in" data-g="${n}" data-w="${w}" value="${s}"></td>`); h += '</tr>'; }
+             document.getElementById('history-table').innerHTML = h + '</tbody>';
+        }
+        
+        // --- Restored Trend Grid ---
+        const trendContainer = document.getElementById('trend-grid-container');
+        trendContainer.innerHTML = ''; charts.forEach(c => c.destroy()); charts = []; 
+        const gridGroups = [...groups].sort((a,b)=>a.id-b.id);
+        gridGroups.forEach(g => {
+            const card = document.createElement('div'); card.className = 'trend-card';
+            const weeklyScores = g.history.slice(0, rd.week-1);
+            const last = weeklyScores[weeklyScores.length-1] || 0; const prev = weeklyScores[weeklyScores.length-2] || 0;
+            const trendIcon = last > prev ? '<i class="fas fa-arrow-up text-green-500 text-xs"></i>' : (last < prev ? '<i class="fas fa-arrow-down text-red-500 text-xs"></i>' : '<i class="fas fa-minus text-gray-400 text-xs"></i>');
+            const chartWidth = Math.max(100, weeklyScores.length * 30); 
+            card.innerHTML = `<div class="trend-header"><span class="font-bold text-sm text-gray-700">${g.displayName}</span><span class="text-xs bg-gray-100 px-2 rounded">${trendIcon}</span></div><div class="trend-score">${g.total} <span class="text-xs text-gray-400 font-normal">总分</span></div><div class="chart-container"><div class="chart-inner" style="width: ${chartWidth}%"><canvas id="chart-g${g.id}"></canvas></div></div>`;
+            trendContainer.appendChild(card);
+            const ctx = document.getElementById(`chart-g${g.id}`);
+            const chart = new Chart(ctx, { type: 'bar', data: { labels: Array.from({length: weeklyScores.length}, (_,i)=>`W${i+1}`), datasets: [{ data: weeklyScores, backgroundColor: '#5b5bd6', borderRadius: 3, barThickness: 12, hoverBackgroundColor: '#4b4bc3' }] }, options: { responsive: true, maintainAspectRatio: false, layout: { padding: { top: 25 } }, plugins: { legend: {display: false}, tooltip: {enabled: false}, datalabels: { display: true } }, scales: { x: {grid:{display:false}, ticks:{font:{size:9}}}, y: {display: false, min: 0} }, animation: { onComplete: function() { const ctx = this.ctx; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'; ctx.fillStyle = '#64748b'; ctx.font = 'bold 10px Inter'; this.data.datasets.forEach((dataset, i) => { const meta = this.getDatasetMeta(i); meta.data.forEach((bar, index) => { ctx.fillText(dataset.data[index], bar.x, bar.y - 2); }); }); } } } }); charts.push(chart);
+        });
+    }
+
+    // --- Awards View ---
+    function setAwardMode(mode) { currentAwardMode = mode; document.getElementById('award-mode-week').className = mode==='week' ? "px-4 py-1.5 text-sm font-bold rounded-md bg-white shadow-sm text-indigo-600" : "px-4 py-1.5 text-sm font-bold rounded-md text-gray-500 hover:text-gray-700"; document.getElementById('award-mode-total').className = mode==='total' ? "px-4 py-1.5 text-sm font-bold rounded-md bg-white shadow-sm text-indigo-600" : "px-4 py-1.5 text-sm font-bold rounded-md text-gray-500 hover:text-gray-700"; renderAwardsView(); }
+    function renderAwardsView() {
+        const rd = db[currentClassId].rankData; const gc = db[currentClassId].config.groupCount; const gn = db[currentClassId].groupNames || {};
+        const groups = []; 
+        for(let i=1; i<=gc; i++) { const name = `第${i}组`; const total = (rd.history[name]||[]).reduce((a,b)=>a+b,0); const weekScore = (rd.history[name]||[])[rd.week-2] || 0; groups.push({ id:i, displayName: `${name} ${gn[i]||''}`, total: total, weekScore: weekScore }); }
+        if(currentAwardMode === 'total') groups.sort((a,b) => b.total - a.total); else groups.sort((a,b) => b.weekScore - a.weekScore);
+        window.awardRanking = groups; 
+        const podium = document.getElementById('podium-area');
+        if(groups.length >= 3) {
+            podium.innerHTML = `<div class="podium-step"><div class="winner-card"><div class="winner-name">${groups[1].displayName}</div><div class="winner-score">${currentAwardMode==='total'?'总分':'周分'}: ${currentAwardMode==='total'?groups[1].total:groups[1].weekScore}</div></div><div class="podium-block podium-rank-2">2</div></div><div class="podium-step"><div class="winner-card" style="transform:scale(1.1) translateY(-10px);border-color:#fbbf24;"><div class="winner-name text-amber-500">${groups[0].displayName}</div><div class="winner-score">${currentAwardMode==='total'?'总分':'周分'}: ${currentAwardMode==='total'?groups[0].total:groups[0].weekScore}</div></div><div class="podium-block podium-rank-1"><i class="fas fa-crown mb-2"></i>1</div></div><div class="podium-step"><div class="winner-card"><div class="winner-name">${groups[2].displayName}</div><div class="winner-score">${currentAwardMode==='total'?'总分':'周分'}: ${currentAwardMode==='total'?groups[2].total:groups[2].weekScore}</div></div><div class="podium-block podium-rank-3">3</div></div>`;
+        }
+        const diamond = groups.slice(0, Math.ceil(gc * 0.25)); const gold = groups.slice(Math.ceil(gc * 0.25), Math.ceil(gc * 0.5)); const silver = groups.slice(Math.ceil(gc * 0.5));
+        document.getElementById('tier-list-diamond').innerHTML = diamond.map(g => `<span class="group-tag border-indigo-200 text-indigo-700 bg-indigo-50">${g.displayName}</span>`).join('');
+        document.getElementById('tier-list-gold').innerHTML = gold.map(g => `<span class="group-tag border-amber-200 text-amber-700 bg-amber-50">${g.displayName}</span>`).join('');
+        document.getElementById('tier-list-silver').innerHTML = silver.map(g => `<span class="group-tag border-slate-200 text-slate-700 bg-slate-50">${g.displayName}</span>`).join('');
+    }
+    function distributeRewards() { document.getElementById('award-config-area').classList.remove('hidden'); const groups = window.awardRanking || []; const pool = db[currentClassId].rewardPool; const pick = () => { const w = pool.reduce((a,b)=>a+b.weight,0); let r=Math.random()*w; for(let p of pool) { if(r<p.weight) return p.name; r-=p.weight; } return pool[0].name; }; if(groups[0]) document.getElementById('aw-1').value = pick(); if(groups[1]) document.getElementById('aw-2').value = pick(); if(groups[2]) document.getElementById('aw-3').value = pick(); document.getElementById('aw-gold').value = groups.length>3 ? pick() : "无"; confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } }); }
+    function cancelAward() { document.getElementById('award-config-area').classList.add('hidden'); }
+    function confirmAndSaveAwards() { const log = db[currentClassId].rankData.awardsLog || []; const groups = window.awardRanking; if(groups[0]) log.push({group: groups[0].id, rank: 1, reward: document.getElementById('aw-1').value}); if(groups[1]) log.push({group: groups[1].id, rank: 2, reward: document.getElementById('aw-2').value}); if(groups[2]) log.push({group: groups[2].id, rank: 3, reward: document.getElementById('aw-3').value}); const goldLimit = Math.ceil(db[currentClassId].config.groupCount * 0.5); groups.slice(3, goldLimit).forEach(g => log.push({group: g.id, rank: 4, reward: document.getElementById('aw-gold').value})); db[currentClassId].rankData.awardsLog = log; saveDB(); cancelAward(); alert("奖励已保存至荣誉记录！"); }
+
+    // --- Weekly Log (Restored Table) ---
+    function renderLogPreview() {
+        const l = db[currentClassId].logConfig; const gn = db[currentClassId].groupNames || {};
+        l.title = document.getElementById('log-title').value; l.h1 = document.getElementById('log-h1').value; l.s1 = document.getElementById('log-s1').value; l.h2 = document.getElementById('log-h2').value; l.s2 = document.getElementById('log-s2').value; 
+        l.h3 = document.getElementById('log-h3').value; l.s3a = document.getElementById('log-s3a').value; l.s3b = document.getElementById('log-s3b').value;
+        l.h4 = document.getElementById('log-h4').value; l.r4 = document.getElementById('log-r4').value;
+        l.c1 = document.getElementById('log-c1').value; l.c2 = document.getElementById('log-c2').value;
+        l.c3 = document.getElementById('log-c3').value; l.c4 = document.getElementById('log-c4').value;
+        saveDB();
+        const days = ['周日','周一','周二','周三','周四','周五'];
+        const rows = days.map(d => `
+            <tr style="height: 14%;">
+                <td style="background:#5b5bd6;color:white;font-weight:bold;writing-mode:vertical-lr;text-orientation:upright;border:1px solid #5b5bd6;letter-spacing:4px;font-size:14px;vertical-align:middle;text-align:center;">${d}</td>
+                <td class="log-td"><div style="display:flex;justify-content:space-around;">${[1,2,3,4].map(n=>`<div style="display:flex;flex-direction:column;align-items:center;gap:2px;"><span style="font-size:10px;color:#6b7280;">${n}号</span><div class="circle-check"></div></div>`).join('')}</div></td>
+                <td class="log-td"><div style="display:flex;justify-content:space-around;">${[1,2,3,4].map(n=>`<div style="display:flex;flex-direction:column;align-items:center;gap:2px;"><span style="font-size:10px;color:#6b7280;">${n}号</span><div class="circle-check"></div></div>`).join('')}</div></td>
+                <td class="log-td"><div style="display:flex;height:100%;align-items:center;"><div style="flex:1;border-right:1px solid #f3f4f6;height:100%;display:flex;flex-direction:column;justify-content:center;"><div style="font-size:10px;color:#6b7280;">${l.s3a}</div><div class="tally-box">正</div></div><div style="flex:1;height:100%;display:flex;flex-direction:column;justify-content:center;"><div style="font-size:10px;color:#6b7280;">${l.s3b}</div><div class="tally-box">正</div></div></div></td>
+                <td class="log-td" style="text-align:left;padding-left:10px;font-size:11px;color:#4b5563;line-height:1.6;">${l.c1}<br>${l.c2}${l.c3?'<br>'+l.c3:''}${l.c4?'<br>'+l.c4:''}</td>
+                <td class="log-td" style="color:#ef4444;font-weight:bold;">- ___</td>
+                <td class="log-td" style="font-weight:bold;">___</td>
+                <td class="log-td"></td>
+            </tr>`).join('');
+
+        document.getElementById('log-print-wrapper').innerHTML = `
+            <div class="log-content-border">
+                <div style="flex:78; display:flex; flex-direction:column; padding-right:15px; border-right:2px dashed #e2e8f0;">
+                    <h1 style="color:#5b5bd6;font-size:24px;text-align:center;font-weight:700;border-bottom:2px solid #5b5bd6;margin-bottom:10px;padding-bottom:5px;display:flex;justify-content:center;align-items:center;gap:10px;">${l.title}</h1>
+                    <div style="display:flex;justify-content:space-between;margin-bottom:10px;font-weight:600;font-size:14px;color:#1e293b;"><span>班级：__________</span><span>组名：________________</span><span>第 ____ 周</span></div>
+                    <table class="log-table" style="flex:1;"><thead><tr style="height:40px;"><th width="4%" class="log-th"></th><th width="14%" class="log-th"> ${l.h1}<br><span style="font-weight:400;font-size:9px;color:#64748b">${l.s1}</span></th><th width="14%" class="log-th"> ${l.h2}<br><span style="font-weight:400;font-size:9px;color:#64748b">${l.s2}</span></th><th width="18%" class="log-th">${l.h3}<br><span style="font-weight:400;font-size:9px;color:#64748b">画“正”字</span></th><th width="18%" class="log-th">${l.h4}<br><span style="font-weight:bold;font-size:9px;color:#d97706">${l.r4}</span></th><th width="8%" class="log-th">⚠️ 违纪</th><th width="10%" class="log-th">⭐ 加减<br><span style="font-weight:400;font-size:9px;color:#64748b">特殊奖惩</span></th><th width="14%" class="log-th">📝 每日小结<br><span style="font-weight:400;font-size:9px;color:#64748b">亮点与问题</span></th></tr></thead><tbody>${rows}</tbody></table>
+                    <div style="display:flex; justify-content:space-between; margin-top:5px; font-size:11px; color:#64748b;"><span>* 记录员务必真实记录，组长每日复核。</span><span>记录员签字：__________</span></div>
+                </div>
+                <div style="flex:22; display:flex; flex-direction:column; gap:8px;">
+                     <div style="text-align:center;color:#5b5bd6;font-weight:700;font-size:16px;display:flex;justify-content:center;gap:5px;">📊 本周数据看板</div>
+                     <div style="background:#f1f5f9;padding:8px;border-radius:8px;border:1px solid #e2e8f0;"><span style="font-weight:600;font-size:12px;color:#1e293b;">1. 基础分 (Base)</span><div style="display:flex;justify-content:space-between;font-size:11px;margin-top:4px;"><span>作业+听写:</span><div style="border-bottom:2px solid #64748b;width:50px;"></div></div></div>
+                     <div style="background:#f1f5f9;padding:8px;border-radius:8px;border:1px solid #e2e8f0;"><span style="font-weight:600;font-size:12px;color:#1e293b;">2. 展示分 (Show)</span><div style="display:flex;justify-content:space-between;font-size:11px;margin-top:4px;"><span>${l.s3a}:</span><div style="display:flex;align-items:end;gap:2px;"><div style="border-bottom:2px solid #64748b;width:30px;"></div> × 2</div></div><div style="display:flex;justify-content:space-between;font-size:11px;margin-top:2px;"><span>${l.s3b}:</span><div style="display:flex;align-items:end;gap:2px;"><div style="border-bottom:2px solid #64748b;width:30px;"></div> × 5</div></div></div>
+                     <div style="background:#fffbeb;padding:8px;border-radius:8px;border:1px solid #fcd34d;"><span style="font-weight:600;font-size:12px;color:#d97706;">3. 帮扶分 (Bonus)</span><div style="display:flex;justify-content:space-between;font-size:11px;margin-top:4px;"><span>4号逆袭:</span><div style="display:flex;align-items:end;gap:2px;"><div style="border-bottom:2px solid #d97706;width:30px;"></div> × 5</div></div></div>
+                     <div style="background:#fef2f2;padding:8px;border-radius:8px;border:1px solid #fecaca;"><span style="font-weight:600;font-size:12px;color:#dc2626;">4. 扣分 (Penalty)</span><div style="display:flex;justify-content:space-between;font-size:11px;margin-top:4px;"><span>违纪合计:</span><div style="display:flex;align-items:end;gap:2px;">- <div style="border-bottom:2px solid #dc2626;width:30px;"></div></div></div></div>
+                     <div style="background:#f1f5f9;padding:8px;border-radius:8px;border:1px solid #e2e8f0;"><span style="font-weight:600;font-size:12px;color:#ef4444;">5. 机动分 (Flexible)</span><div style="display:flex;justify-content:space-between;font-size:11px;margin-top:4px;"><span>特殊奖惩:</span><div style="border-bottom:2px solid #64748b;width:40px;"></div></div></div>
+                     <div style="background:linear-gradient(135deg,#ccfbf1,#99f6e4);padding:10px;border-radius:12px;text-align:left;border:2px solid #14b8a6;margin-top:auto;"><span style="font-size:12px;font-weight:600;color:#0f766e;margin-left:10px;">本周总积分:</span></div>
+                     <div style="border:2px solid #e2e8f0;border-radius:8px;padding:8px;flex-grow:1;display:flex;flex-direction:column;justify-content:space-between;"><strong style="font-size:12px;color:#5b5bd6;">💡 本周反思 (Reflection)</strong><div style="font-size:10px;color:#64748b;">MVP组员:</div><div style="border-bottom:1px solid #e2e8f0;"></div><div style="font-size:10px;color:#64748b;">最大问题:</div><div style="border-bottom:1px solid #e2e8f0;"></div><div style="font-size:10px;color:#64748b;">下周目标:</div><div style="border-bottom:1px solid #e2e8f0;"></div></div>
+                     <div style="text-align:center;font-size:10px;color:#94a3b8;">组长签字:________</div>
+                </div>
+            </div>`;
+    }
+    function exportWeeklyLogPDF() { const el = document.getElementById('log-print-wrapper'); const c = el.cloneNode(true); c.style.transform='none'; c.style.margin='0'; document.body.appendChild(c); html2pdf().set({margin:0,filename:'周日志.pdf',image:{type:'jpeg',quality:0.98},html2canvas:{scale:2,useCORS:true},jsPDF:{unit:'mm',format:'a4',orientation:'landscape'}}).from(c).save().then(()=>document.body.removeChild(c)); }
+
+    // --- Class Manager ---
+    function openClassManager() {
+        const list = document.getElementById('class-manager-list'); list.innerHTML = '';
+        Object.keys(db).forEach(id => {
+            const div = document.createElement('div'); div.className = 'flex justify-between items-center bg-gray-50 p-3 rounded-lg border border-gray-200';
+            div.innerHTML = `
+                <div class="flex items-center gap-2">
+                    <input type="text" id="edit-name-${id}" value="${db[id].name}" class="bg-white border border-gray-300 rounded px-2 py-1 text-sm font-bold text-gray-700 w-32 focus:ring-2 focus:ring-indigo-200 outline-none">
+                    <button onclick="saveClassName('${id}')" class="text-green-600 hover:text-green-800 text-xs px-2 py-1"><i class="fas fa-check"></i> 保存</button>
+                </div>
+                ${Object.keys(db).length > 1 ? `<button onclick="deleteClass('${id}')" class="text-red-500 hover:text-red-700 text-xs px-2 py-1 rounded bg-white border border-red-200 hover:bg-red-50">删除</button>` : ''}
+            `;
+            list.appendChild(div);
+        });
+        document.getElementById('classManagerModal').classList.add('open');
+    }
+    function saveClassName(id) {
+        const newName = document.getElementById(`edit-name-${id}`).value;
+        if(newName) {
+            db[id].name = newName; saveDB(); renderClassSelector(); 
+            if(id === currentClassId) document.getElementById('dash-title').innerText = newName + " 概览";
+            alert("修改成功");
+        }
+    }
+    function deleteClass(id) { 
+        if(confirm("确定删除该班级？数据将不可恢复！")) { 
+            delete db[id]; saveDB(); 
+            if(currentClassId === id) changeClass(Object.keys(db)[0]); else renderClassSelector(); 
+            openClassManager(); 
+        } 
+    }
+    function addClass(){ const n=prompt("班级名"); if(n){const id=createClass(n); changeClass(id); renderClassSelector(); openClassManager();} }
+
+    // --- Group Management (Restored) ---
+    function renderGroupingEditor() {
+        const c = document.getElementById('drag-drop-area'); 
+        if(!c) return; c.innerHTML = '';
+        const s = db[currentClassId].students; const gc = db[currentClassId].config.groupCount; const gn = db[currentClassId].groupNames || {};
+        for(let i=1; i<=gc; i++) {
+            const gs = s.filter(st=>st.groupId==i).sort((a,b)=>(a.order||0)-(b.order||0));
+            let h = `<div class="group-card-large" id="gl-${i}-card"><div class="group-header-large"><div><span class="mr-2">第${i}组</span><input type="text" class="group-name-input" value="${gn[i]||''}" placeholder="队名" onchange="updateGroupName(${i}, this.value)"></div><span class="text-xs bg-white border px-2 py-1 rounded text-gray-500">${gs.length}人</span></div><div class="student-list-large" id="gl-${i}">`;
+            gs.forEach((st, idx) => {
+                const role = db[currentClassId].config.roles[Math.min(idx,3)]||'成员'; const rc = `role-${Math.min(idx+1,4)}`;
+                h += `<div class="student-item-large" data-id="${st.id}">
+                        <div class="flex items-center gap-2"><span class="role-badge ${rc}">${role}</span><span class="font-medium text-xs text-gray-700">${st.name}</span></div>
+                        <div class="flex items-center gap-2"><span class="text-indigo-600 font-bold text-xs">${st.score}</span><button class="btn-move" onclick="moveToGroup(${st.id})" title="传送"><i class="fas fa-arrow-right"></i></button></div>
+                      </div>`;
+            });
+            c.innerHTML += h + `</div></div>`;
+        }
+        sortables.forEach(s=>s.destroy()); sortables=[];
+        for(let i=1; i<=gc; i++) sortables.push(new Sortable(document.getElementById(`gl-${i}`),{group:'shared',animation:150,onEnd:updateGroupingData}));
+    }
+    
+    // --- Other Logic ---
+    function updateGroupName(id, val) { if(!db[currentClassId].groupNames) db[currentClassId].groupNames = {}; db[currentClassId].groupNames[id] = val; saveDB(); }
+    function updateGroupingData() { const s = db[currentClassId].students; for(let i=1; i<=db[currentClassId].config.groupCount; i++) { document.getElementById(`gl-${i}`).querySelectorAll('.student-item-large').forEach((el, idx) => { const st = s.find(x => x.id == el.dataset.id); if(st) { st.groupId = i; st.order = idx; } }); } saveDB(); renderGroupingEditor(); }
+    function moveToGroup(sid) { const g = prompt("请输入目标组号："); if(g && !isNaN(g)) { const t = parseInt(g); if(t>0 && t<=db[currentClassId].config.groupCount) { const s = db[currentClassId].students.find(x=>x.id==sid); s.groupId=t; s.order=99; saveDB(); renderGroupingEditor(); } } }
+    function saveRankWeek() { if(isHistoryMode) return alert("请先保存修正"); const rd = db[currentClassId].rankData; let has = false; for(let i=1; i<=db[currentClassId].config.groupCount; i++) { const val = document.getElementById(`score-第${i}组`).value; if(val!=='') has=true; rd.history[`第${i}组`].push(parseInt(val)||0); } if(!has) return alert("请输入分数"); rd.week++; saveDB(); renderRankingView(); alert("结算成功"); }
+    function toggleHistoryMode() { isHistoryMode = !isHistoryMode; document.getElementById('rank-input-mode').classList.toggle('hidden'); document.getElementById('rank-history-mode').classList.toggle('hidden'); if(isHistoryMode) renderRankingView(); }
+    function saveHistoryCorrection() { document.querySelectorAll('.hist-in').forEach(el => db[currentClassId].rankData.history[el.dataset.g][el.dataset.w] = parseInt(el.value)||0); saveDB(); alert("已保存"); toggleHistoryMode(); renderRankingView(); }
+    function renderRulesView() { const pool = db[currentClassId].rewardPool || []; document.getElementById('reward-list-container').innerHTML = pool.map((r, i) => `<div class="reward-card"><input type="text" class="reward-input-name" value="${r.name}" onchange="updateReward(${i}, 'name', this.value)"><div class="flex items-center gap-2"><div class="reward-weight-tag"><i class="fas fa-weight-hanging text-xs"></i><input type="number" class="reward-weight-input" value="${r.weight}" onchange="updateReward(${i}, 'weight', this.value)"></div><button class="text-red-400 hover:text-red-600 transition" onclick="removeReward(${i})"><i class="fas fa-times"></i></button></div></div>`).join(''); renderRulesPreview(); }
+    function updateReward(i, f, v) { if(f==='weight') v=parseInt(v)||0; db[currentClassId].rewardPool[i][f]=v; saveDB(); }
+    function addReward() { const n=document.getElementById('new-reward-name').value; const w=parseInt(document.getElementById('new-reward-weight').value); if(n){db[currentClassId].rewardPool.push({name:n,weight:w}); document.getElementById('new-reward-name').value=''; saveDB(); renderRulesView();} }
+    function removeReward(i) { db[currentClassId].rewardPool.splice(i,1); saveDB(); renderRulesView(); }
+    function renderRulesPreview() { document.getElementById('rules-preview').innerHTML = document.getElementById('rules-editor').value; }
+    function saveRulesAndRewards() { db[currentClassId].rulesContent = document.getElementById('rules-editor').value; saveDB(); alert("保存成功"); }
+    
+    // --- Optimized PDF Export (Clean A4) ---
+    function exportRulesPDF() { 
+        const el = document.getElementById('rules-preview'); 
+        const clone = el.cloneNode(true);
+        clone.style.boxShadow = 'none'; clone.style.margin = '0'; clone.style.padding = '25mm'; clone.style.width = '210mm'; clone.style.minHeight = '297mm'; clone.style.background = '#fff';
+        const h1 = clone.querySelector('.policy-h1'); if(h1) { h1.style.webkitBackgroundClip = 'initial'; h1.style.background = 'none'; h1.style.color = '#000'; h1.style.borderBottom = '2px solid #000'; }
+        const opt = { margin: 0, filename: `${db[currentClassId].name}_合作制度.pdf`, image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } };
+        document.body.appendChild(container = document.createElement('div')); container.style.width = '210mm'; container.appendChild(clone);
+        html2pdf().set(opt).from(container).save().then(() => document.body.removeChild(container));
+    }
+    
+    function downloadTemplate(type) { if(type === 'roster') { const ws = XLSX.utils.json_to_sheet([{姓名:"张三",成绩:95},{姓名:"李四",成绩:88}]); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "名单"); XLSX.writeFile(wb, "学生名单导入模板.xlsx"); } else { const ws = XLSX.utils.json_to_sheet([{姓名:"张三",成绩:98}]); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "成绩"); XLSX.writeFile(wb, "成绩更新模板.xlsx"); } }
+    function handleListImport(input) { const f = input.files[0]; if(!f) return; const r = new FileReader(); r.onload = e => { try { const wb = XLSX.read(e.target.result, {type:'array'}); const json = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]); if(!json.length || !json[0]['姓名']) return alert("需包含'姓名'列"); db[currentClassId].students = json.map((row,i) => ({id:Date.now()+i, name:row['姓名'], score:row['成绩']||0, groupId:0, order:0})); saveDB(); document.getElementById('modal-student-count').innerText = json.length; document.getElementById('setupModal').classList.add('open'); input.value = ''; } catch(e) { alert("文件读取失败"); } }; r.readAsArrayBuffer(f); }
+    function finishSetup() { const gc = parseInt(document.getElementById('modal-group-count').value); const roles = [document.getElementById('modal-role-1').value, document.getElementById('modal-role-2').value, document.getElementById('modal-role-3').value, document.getElementById('modal-role-4').value]; db[currentClassId].config.groupCount = gc; db[currentClassId].config.roles = roles; saveDB(); document.getElementById('algo-group-count').value = gc; document.getElementById('role-n1').value = roles[0]; document.getElementById('role-n2').value = roles[1]; document.getElementById('role-n3').value = roles[2]; document.getElementById('role-n4').value = roles[3]; runAutoGrouping(); document.getElementById('setupModal').classList.remove('open'); switchView('dashboard'); }
+    function handleScoreImport(input) { const f = input.files[0]; if(!f) return; const r = new FileReader(); r.onload = e => { try { const wb = XLSX.read(e.target.result, {type:'array'}); const json = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]); if(!json.length || !json[0]['姓名'] || !json[0]['成绩']) return alert("需包含'姓名'和'成绩'列"); let updated = 0; json.forEach(row => { const st = db[currentClassId].students.find(s => s.name === row['姓名']); if(st) { st.score = parseFloat(row['成绩']); updated++; } }); saveDB(); alert(`成功更新 ${updated} 人的成绩`); renderGroupingEditor(); input.value = ''; } catch(e) { alert("文件错误"); } }; r.readAsArrayBuffer(f); }
+    function runAutoGrouping() { const useHistory = document.getElementById('algo-history-weight').checked; const count = db[currentClassId].config.groupCount; const students = db[currentClassId].students; students.forEach(s => { let sortScore = s.score; if(useHistory) { const prevGroup = `第${s.groupId}组`; const historyArr = db[currentClassId].rankData.history[prevGroup] || []; const totalHistory = historyArr.reduce((a,b)=>a+b, 0); sortScore = (s.score * 0.7) + (totalHistory * 0.1); } s._sortScore = sortScore; }); students.sort((a,b) => b._sortScore - a._sortScore); students.forEach((s, idx) => { const row = Math.floor(idx / count); s.groupId = (row % 2 === 0) ? (idx % count) + 1 : count - (idx % count); }); for(let i=1; i<=count; i++) { students.filter(s => s.groupId == i).sort((a,b) => b.score - a.score).forEach((s, idx) => s.order = idx); } saveDB(); renderGroupingEditor(); if(!document.getElementById('setupModal').classList.contains('open')) { alert(useHistory ? "已结合历史表现完成 S 型重组！" : "已按当前成绩完成 S 型重组！"); } }
+    function exportData() { const a=document.createElement('a'); a.href="data:text/json;charset=utf-8,"+encodeURIComponent(JSON.stringify(db)); a.download=`backup.json`; a.click(); }
+    function importData(input) { const f=input.files[0]; if(!f)return; const r=new FileReader(); r.onload=e=>{ db=JSON.parse(e.target.result); saveDB(); location.reload();}; r.readAsText(f); }
+    function addClass(){ const n=prompt("班级名"); if(n){const id=createClass(n); changeClass(id); renderClassSelector(); openClassManager();} }
+    function renderClassSelector(){ document.getElementById('classSelector').innerHTML=Object.keys(db).map(k=>`<option value="${k}">${db[k].name}</option>`).join(''); document.getElementById('classSelector').value=currentClassId; }
+    function clearClassData(){ if(confirm("⚠️ 确定要清空当前班级的所有学生和数据吗？此操作无法撤销。")) { db[currentClassId].students=[]; db[currentClassId].rankData={week:1,history:{},awardsLog:[]}; saveDB(); location.reload(); } }
+
+    init();
+</script>
+</body>
+</html>
